@@ -1,22 +1,54 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt">
 <head>
     <meta charset="UTF-8">
-    <title>Bolão F1</title>
+    <title>Formula 1 2025 Big Ball</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <h1>Bolão F1 - Temporada 2025</h1>
-    <h2>Fazer Palpite</h2>
-    <form action="/palpite" method="POST">
-        <label>Pole Position: <input type="text" name="pole"></label><br>
-        <label>1º Lugar: <input type="text" name="p1"></label><br>
-        <label>2º Lugar: <input type="text" name="p2"></label><br>
-        <label>3º Lugar: <input type="text" name="p3"></label><br>
-        <button type="submit">Enviar Palpite</button>
-    </form>
-    <h2>Ranking</h2>
-    <p>(Ranking em breve)</p>
-    <a href="/ultima-corrida">Ver pódio da última corrida</a>
+    <h1>Formula 1 2025 Big Ball</h1>
+
+    <p>Bem-vindo, {{ username }}!</p>
+    <p><strong>Sua pontuação:</strong> (A implementar)</p>
+    <p><strong>Seu ranking:</strong> (A implementar)</p>
+
+    <h2>Próximo Grande Prêmio</h2>
+    {% if corrida %}
+        <p>Data: {{ corrida.date }} | Local: {{ corrida.Circuit.circuitName }} | País: {{ corrida.Circuit.Location.country }}</p>
+    {% else %}
+        <p>Nenhuma corrida futura encontrada.</p>
+    {% endif %}
+
+    <h2>Eventos da Corrida Atual ou Próxima</h2>
+    {% if corrida %}
+        <ul>
+            {% for evento in eventos %}
+                <li>{{ evento.data }} - {{ evento.tipo }} <a href="{{ url_for('registrar_palpite') }}?event_type={{ evento.tipo }}">Registrar Palpite</a></li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>Nenhum evento disponível.</p>
+    {% endif %}
+
+    <h2>Seus Palpites para essa Corrida</h2>
+    {% if palpites %}
+        {% for event_type, (pole, p1, p2, p3) in palpites.items() %}
+            <h3>Palpites para {{ event_type }}</h3>
+            {% if event_type in ["Qualifying", "Sprint Qualifying"] %}
+                <p>Pole: {{ pole }}</p>
+            {% elif event_type in ["Race", "Sprint Race"] %}
+                <p>P1: {{ p1 }}</p>
+                <p>P2: {{ p2 }}</p>
+                <p>P3: {{ p3 }}</p>
+            {% endif %}
+        {% endfor %}
+    {% else %}
+        <p>Você ainda não enviou palpites para essa corrida.</p>
+    {% endif %}
+
+    <h2><a href="{{ url_for('registrar_palpite') }}">Registrar Palpite</a></h2>
+    <h2><a href="{{ url_for('alterar_senha') }}">Alterar senha</a></h2>
+    <h2><a href="{{ url_for('calendario') }}">Ver Calendário</a></h2>
+    <p><a href="{{ url_for('logout') }}">Sair</a></p>
 </body>
 </html>

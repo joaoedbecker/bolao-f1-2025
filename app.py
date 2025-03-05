@@ -1,49 +1,250 @@
-from flask import Flask, render_template, request, jsonify
-import requests
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
+import requests
+from datetime import datetime, timedelta
+import os
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'chave_super_secreta')  # Use variável de ambiente para segurança
+
+# Configuração do Flask-Login
+login_manager = LoginManager()
+login_manager.login_view = 'login'
+login_manager.init_app(app)
 
 # Inicializar o banco de dados
 def init_db():
     conn = sqlite3.connect('bolao.db')
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS palpites 
-                 (id INTEGER PRIMARY KEY, usuario TEXT, pole TEXT, p1 TEXT, p2 TEXT, p3 TEXT)''')
+
+    # Criar tabela de usuários
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL
+        )
+    ''')
+
+    # Criar tabela de palpites com event_type (para bancos novos)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS palpites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            usuario TEXT NOT NULL,
+            race_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,  -- Novo campo para tipo de evento
+            pole TEXT NOT NULL,
+            p1 TEXT NOT NULL,
+            p2 TEXT NOT NULL,
+            p3 TEXT NOT NULL
+        )
+    ''')
+
+    # Verificar se a coluna event_type existe e adicioná-la se necessário (para bancos antigos)
+    c.execute("PRAGMA table_info(palpites)")
+    columns = [col[1] for col in c.fetchall()]
+    if 'event_type' not in columns:
+        c.execute("ALTER TABLE palpites ADD COLUMN event_type TEXT NOT NULL DEFAULT 'Race'")
+
     conn.commit()
     conn.close()
 
-@app.route('/')
-def home():
-    return render_template('index.html')
+# Criar os 4 usuários permitidos no sistema
+def criar_usuarios():
+    usuarios_permitidos = ["admin", "guilherme", "joao", "marinho"]
+    senhas = {user: generate_password_hash("1234") for user in usuarios_permitidos}
 
-@app.route('/palpite', methods=['POST'])
-def palpite():
-    usuario = "amigo1"  # Fixo por enquanto
-    pole = request.form['pole']
-    p1 = request.form['p1']
-    p2 = request.form['p2']
-    p3 = request.form['p3']
     conn = sqlite3.connect('bolao.db')
     c = conn.cursor()
-    c.execute("INSERT INTO palpites (usuario, pole, p1, p2, p3) VALUES (?, ?, ?, ?, ?)", 
-              (usuario, pole, p1, p2, p3))
+
+    for user, senha in senhas.items():
+        try:
+            c.execute("INSERT INTO usuarios (username, password) VALUES (?, ?)", (user, senha))
+        except sqlite3.IntegrityError:
+            pass  # Se o usuário já existir, não adiciona novamente
+
     conn.commit()
     conn.close()
-    return "Palpite salvo com sucesso!"
 
+# Modelo de Usuário para o Flask-Login
+class Usuario(UserMixin):
+    def __init__(self, id, username, password):
+        self.id = id
+        self.username = username
+        self.password = password
+
+    @staticmethod
+    def buscar_usuario(username):
+        conn = sqlite3.connect('bolao.db')
+        c = conn.cursor()
+        c.execute("SELECT * FROM usuarios WHERE username = ?", (username,))
+        user_data = c.fetchone()
+        conn.close()
+        if user_data:
+            return Usuario(*user_data)
+        return None
+
+    @staticmethod
+    def buscar_usuario_por_id(user_id):
+        conn = sqlite3.connect('bolao.db')
+        c = conn.cursor()
+        c.execute("SELECT * FROM usuarios WHERE id = ?", (user_id,))
+        user_data = c.fetchone()
+        conn.close()
+        if user_data:
+            return Usuario(*user_data)
+        return None
+
+@login_manager.user_loader
+def load_user(user_id):
+    return Usuario.buscar_usuario_por_id(user_id)
+
+# Rota de Login
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+
+        user = Usuario.buscar_usuario(username)
+        if user and check_password_hash(user.password, password):
+            login_user(user)
+            return redirect(url_for('home'))
+        else:
+            flash('Usuário ou senha incorretos.', 'danger')
+
+    return render_template('login.html')
+
+# Rota de Logout
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+# Página Inicial - Protegida por login
+@app.route('/')
+@login_required
+def home():
+    # Buscar calendário da temporada
+    url = "http://ergast.com/api/f1/2024.json"
+    response = requests.get(url)
+    data = response.json()
+    hoje = datetime(2024, 3, 1)  # Simula 01/03/2024 para testes
+    corrida_atual = None
+    proxima_corrida = None
+
+    # Identificar corrida atual ou próxima
+    for corrida in data["MRData"]["RaceTable"]["Races"]:
+        data_corrida = datetime.strptime(corrida["date"], "%Y-%m-%d")
+        if hoje.date() <= data_corrida.date() <= (hoje.date() + timedelta(days=1)):
+            corrida_atual = corrida
+            break
+        elif data_corrida > hoje:
+            proxima_corrida = corrida
+            break
+
+    corrida_exibida = corrida_atual if corrida_atual else proxima_corrida
+    eventos = []
+    if corrida_exibida:
+        eventos = [
+            {"tipo": "Qualifying", "data": corrida_exibida["Qualifying"]["date"] if "Qualifying" in corrida_exibida else "N/A"},
+            {"tipo": "Race", "data": corrida_exibida["date"]}
+        ]
+        if "Sprint" in corrida_exibida:
+            eventos.insert(0, {"tipo": "Sprint Race", "data": corrida_exibida["Sprint"]["date"]})
+            eventos.insert(0, {"tipo": "Sprint Qualifying", "data": corrida_exibida["SprintQualifying"]["date"] if "SprintQualifying" in corrida_exibida else "N/A"})
+
+    # Buscar palpites do usuário para a corrida exibida, agrupados por event_type
+    conn = sqlite3.connect('bolao.db')
+    c = conn.cursor()
+    race_id = corrida_exibida["round"] if corrida_exibida else None
+    palpites = {}
+    if race_id:
+        c.execute("SELECT event_type, pole, p1, p2, p3 FROM palpites WHERE usuario = ? AND race_id = ?", 
+                  (current_user.username, race_id))
+        for row in c.fetchall():
+            event_type, pole, p1, p2, p3 = row
+            palpites[event_type] = (pole, p1, p2, p3)
+    conn.close()
+
+    return render_template('index.html', username=current_user.username, corrida=corrida_exibida, eventos=eventos, palpites=palpites)
+
+# Rota para cadastrar palpites
+@app.route('/registrar_palpite', methods=['GET', 'POST'])
+@login_required
+def registrar_palpite():
+    if request.method == 'POST':
+        usuario = current_user.username
+        race_id = request.form.get('race_id', '0')
+        event_type = request.form.get('event_type', 'Race')
+        
+        # Validar e salvar apenas os campos necessários para cada tipo de evento
+        if event_type in ["Qualifying", "Sprint Qualifying"]:
+            pole = request.form.get('pole', 'N/A')
+            p1 = p2 = p3 = 'N/A'  # Campos não necessários para Qualifying
+        elif event_type in ["Race", "Sprint Race"]:
+            pole = 'N/A'  # Campo não necessário para Race
+            p1 = request.form['p1']
+            p2 = request.form['p2']
+            p3 = request.form['p3']
+        else:
+            flash("Tipo de evento inválido.", "danger")
+            return redirect(url_for('home'))
+
+        conn = sqlite3.connect('bolao.db')
+        c = conn.cursor()
+        c.execute("INSERT INTO palpites (usuario, race_id, event_type, pole, p1, p2, p3) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                  (usuario, race_id, event_type, pole, p1, p2, p3))
+        conn.commit()
+        conn.close()
+        
+        flash("Palpite salvo com sucesso!", "success")
+        return redirect(url_for('home'))
+
+    # Buscar pilotos da temporada atual
+    url_pilotos = "http://ergast.com/api/f1/2024/drivers.json"
+    response = requests.get(url_pilotos)
+    data = response.json()
+    pilotos = [f"{driver['givenName']} {driver['familyName']}" for driver in data["MRData"]["DriverTable"]["Drivers"]]
+    
+    # Buscar a corrida atual ou próxima para enviar o race_id
+    url = "http://ergast.com/api/f1/2024.json"
+    response = requests.get(url)
+    data = response.json()
+    hoje = datetime(2024, 3, 1)  # Simula 01/03/2024 para testes
+    corrida_atual = None
+    for corrida in data["MRData"]["RaceTable"]["Races"]:
+        data_corrida = datetime.strptime(corrida["date"], "%Y-%m-%d")
+        if hoje.date() <= data_corrida.date() <= (hoje.date() + timedelta(days=1)):
+            corrida_atual = corrida
+            break
+        elif data_corrida > hoje:
+            corrida_atual = corrida
+            break
+
+    # Lista de eventos possíveis para a corrida
+    eventos = ["Qualifying", "Race"]
+    if corrida_atual and "Sprint" in corrida_atual:
+        eventos = ["Sprint Qualifying", "Sprint Race", "Qualifying", "Race"]
+
+    # Pegar event_type da URL, se passado
+    event_type = request.args.get('event_type', 'Race')
+    return render_template('registrar_palpite.html', pilotos=pilotos, race_id=corrida_atual["round"] if corrida_atual else "0", eventos=eventos, event_type=event_type)
+
+# Rota para buscar a última corrida e pole position
 @app.route('/ultima-corrida')
 def ultima_corrida():
-    # Buscar os resultados da última corrida
-    url_resultado = "http://ergast.com/api/f1/current/last/results.json"
+    url_resultado = "http://ergast.com/api/f1/2024/last/results.json"
     response_resultado = requests.get(url_resultado)
     data_resultado = response_resultado.json()
-    
+
     race = data_resultado['MRData']['RaceTable']['Races'][0]
     podium = [f"{r['Driver']['givenName']} {r['Driver']['familyName']}" for r in race['Results'][:3]]
 
-    # Buscar o pole position da última corrida
-    url_qualifying = "http://ergast.com/api/f1/current/last/qualifying.json"
+    url_qualifying = "http://ergast.com/api/f1/2024/last/qualifying.json"
     response_qualifying = requests.get(url_qualifying)
     data_qualifying = response_qualifying.json()
 
@@ -59,8 +260,55 @@ def ultima_corrida():
         "podium": podium
     })
 
+# Rota para alteração de senha
+@app.route('/alterar_senha', methods=['GET', 'POST'])
+@login_required
+def alterar_senha():
+    if request.method == 'POST':
+        senha_atual = request.form['senha_atual']
+        nova_senha = request.form['nova_senha']
+        confirmar_senha = request.form['confirmar_senha']
+
+        user = Usuario.buscar_usuario(current_user.username)
+
+        if not check_password_hash(user.password, senha_atual):
+            flash("Senha atual incorreta.", "danger")
+        elif nova_senha != confirmar_senha:
+            flash("As senhas novas não coincidem.", "danger")
+        else:
+            nova_senha_hash = generate_password_hash(nova_senha)
+            conn = sqlite3.connect('bolao.db')
+            c = conn.cursor()
+            c.execute("UPDATE usuarios SET password = ? WHERE username = ?", (nova_senha_hash, current_user.username))
+            conn.commit()
+            conn.close()
+            flash("Senha alterada com sucesso!", "success")
+            return redirect(url_for('home'))
+
+    return render_template('alterar_senha.html')
+
+# Rota para o calendário de 2024
+@app.route('/calendario')
+def calendario():
+    url = "http://ergast.com/api/f1/2024.json"
+    response = requests.get(url)
+    data = response.json()
+
+    corridas = []
+    for race in data["MRData"]["RaceTable"]["Races"]:
+        corrida = {
+            "nome": race["raceName"],
+            "data": race["date"],
+            "local": race["Circuit"]["circuitName"],
+            "pais": race["Circuit"]["Location"]["country"],
+            "qualificacao": race["Qualifying"]["date"] if "Qualifying" in race else "N/A",
+            "sprint": race["Sprint"]["date"] if "Sprint" in race else "N/A"
+        }
+        corridas.append(corrida)
+
+    return render_template('calendario.html', calendario=corridas)
+
 if __name__ == '__main__':
     init_db()
+    criar_usuarios()
     app.run(debug=True)
-else:
-    init_db()
