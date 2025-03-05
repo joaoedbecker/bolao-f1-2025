@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Bolão F1</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Bolão F1 - Temporada 2025</h1>
+    <h2>Fazer Palpite</h2>
+    <form action="/palpite" method="POST">
+        <label>Pole Position: <input type="text" name="pole"></label><br>
+        <label>1º Lugar: <input type="text" name="p1"></label><br>
+        <label>2º Lugar: <input type="text" name="p2"></label><br>
+        <label>3º Lugar: <input type="text" name="p3"></label><br>
+        <button type="submit">Enviar Palpite</button>
+    </form>
+    <h2>Ranking</h2>
+    <p>(Ranking em breve)</p>
+    <a href="/ultima-corrida">Ver pódio da última corrida</a>
+</body>
+</html>
