@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Calendário da Temporada 2024</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Calendário da Temporada 2024</h1>
+    
+    <table border="1">
+        <tr>
+            <th>Corrida</th>
+            <th>Data</th>
+            <th>Local</th>
+            <th>País</th>
+            <th>Qualificação</th>
+            <th>Sprint</th>
+        </tr>
+        {% for corrida in calendario %}
+        <tr>
+            <td>{{ corrida.nome }}</td>
+            <td>{{ corrida.data }}</td>
+            <td>{{ corrida.local }}</td>
+            <td>{{ corrida.pais }}</td>
+            <td>{{ corrida.qualificacao }}</td>
+            <td>{{ corrida.sprint }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <br>
+    <a href="{{ url_for('home') }}">Voltar</a>
+</body>
+</html>
