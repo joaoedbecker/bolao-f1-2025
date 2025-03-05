@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 import requests
 import sqlite3
 
@@ -34,12 +34,30 @@ def palpite():
 
 @app.route('/ultima-corrida')
 def ultima_corrida():
-    url = "http://ergast.com/api/f1/current/last/results.json"
-    response = requests.get(url)
-    data = response.json()
-    race = data['MRData']['RaceTable']['Races'][0]
+    # Buscar os resultados da última corrida
+    url_resultado = "http://ergast.com/api/f1/current/last/results.json"
+    response_resultado = requests.get(url_resultado)
+    data_resultado = response_resultado.json()
+    
+    race = data_resultado['MRData']['RaceTable']['Races'][0]
     podium = [f"{r['Driver']['givenName']} {r['Driver']['familyName']}" for r in race['Results'][:3]]
-    return {"corrida": race['raceName'], "podium": podium}
+
+    # Buscar o pole position da última corrida
+    url_qualifying = "http://ergast.com/api/f1/current/last/qualifying.json"
+    response_qualifying = requests.get(url_qualifying)
+    data_qualifying = response_qualifying.json()
+
+    try:
+        pole_position = data_qualifying['MRData']['RaceTable']['Races'][0]['QualifyingResults'][0]['Driver']
+        pole_name = f"{pole_position['givenName']} {pole_position['familyName']}"
+    except (IndexError, KeyError):
+        pole_name = "Desconhecido"
+
+    return jsonify({
+        "corrida": race['raceName'],
+        "pole_position": pole_name,
+        "podium": podium
+    })
 
 if __name__ == '__main__':
     init_db()
