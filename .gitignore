@@ -1,1 +1,39 @@
-venv/\n*.db\n__pycache__/\n*.pyc
+# Banco de dados local
+bolao.db
+
+# Arquivos temporários do Python
+__pycache__/
+*.pyc
+
+# Ambiente virtual
+venv/
+env/
+
+# Arquivos de configuração local
+*.env
+.envrc
+
+# Logs e arquivos temporários
+*.log
+*.bak
+
+# Arquivos de IDE/Editor
+*.idea/
+*.vscode/
+*.swp
+*.swo
+*.DS_Store
+
+# Arquivos gerados ou desnecessários
+*.out
+*.tmp
+
+# Diretórios de build ou distribuição (se houver)
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Arquivos de teste ou dados temporários (se aplicável)
+test_data/
+backup/
