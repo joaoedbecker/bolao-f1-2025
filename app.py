@@ -28,25 +28,19 @@ def init_db():
         )
     ''')
 
-    # Criar tabela de palpites com event_type (para bancos novos)
+    # Criar tabela de palpites
     c.execute('''
         CREATE TABLE IF NOT EXISTS palpites (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             usuario TEXT NOT NULL,
             race_id TEXT NOT NULL,
-            event_type TEXT NOT NULL,  -- Novo campo para tipo de evento
+            event_type TEXT NOT NULL,
             pole TEXT NOT NULL,
             p1 TEXT NOT NULL,
             p2 TEXT NOT NULL,
             p3 TEXT NOT NULL
         )
     ''')
-
-    # Verificar se a coluna event_type existe e adicioná-la se necessário (para bancos antigos)
-    c.execute("PRAGMA table_info(palpites)")
-    columns = [col[1] for col in c.fetchall()]
-    if 'event_type' not in columns:
-        c.execute("ALTER TABLE palpites ADD COLUMN event_type TEXT NOT NULL DEFAULT 'Race'")
 
     conn.commit()
     conn.close()
@@ -157,7 +151,7 @@ def home():
             eventos.insert(0, {"tipo": "Sprint Race", "data": corrida_exibida["Sprint"]["date"]})
             eventos.insert(0, {"tipo": "Sprint Qualifying", "data": corrida_exibida["SprintQualifying"]["date"] if "SprintQualifying" in corrida_exibida else "N/A"})
 
-    # Buscar palpites do usuário para a corrida exibida, agrupados por event_type
+    # Buscar todos os palpites do usuário para a corrida exibida, agrupados por event_type
     conn = sqlite3.connect('bolao.db')
     c = conn.cursor()
     race_id = corrida_exibida["round"] if corrida_exibida else None
@@ -308,8 +302,6 @@ def calendario():
 
     return render_template('calendario.html', calendario=corridas)
 
-if __name__ == '__main__':
-    init_db()
-    criar_usuarios()
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+# Chamar init_db() e criar_usuarios() ao importar o módulo
+init_db()
+criar_usuarios()
