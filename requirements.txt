@@ -1,0 +1,1 @@
+flask==3.0.3\nrequests==2.32.3\ngunicorn==23.0.0
